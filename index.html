@@ -6,6 +6,7 @@
     <title>Plataforma de Análise de Comissões</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body class="bg-gray-50">
@@ -35,6 +36,9 @@
                     <button onclick="showTab('tabela')" id="tab-tabela" class="tab-button">
                         <i class="fas fa-table mr-2"></i>Tabela Unificada
                     </button>
+                    <button onclick="showTab('vendedores')" id="tab-vendedores" class="tab-button">
+                        <i class="fas fa-users mr-2"></i>Vendedores
+                    </button>
                     <button onclick="showTab('relatorios')" id="tab-relatorios" class="tab-button">
                         <i class="fas fa-chart-bar mr-2"></i>Relatórios
                     </button>
@@ -56,21 +60,28 @@
                             Upload de Extratos
                         </h2>
                         <p class="text-gray-600 mb-6">
-                            Faça upload de extratos em PDF das seguradoras (Porto, Tokio, Yelum, Zurich, Porto Consórcio)
+                            Faça upload de extratos em PDF ou CSV das seguradoras
                         </p>
                         
-                        <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+                        <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center" 
+                             ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
                             <i class="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-4"></i>
-                            <h3 class="text-lg font-medium text-gray-900 mb-2">Demonstração Online</h3>
+                            <h3 class="text-lg font-medium text-gray-900 mb-2">Arraste arquivos aqui ou clique para selecionar</h3>
                             <p class="text-gray-500 mb-4">
-                                Esta é uma versão de demonstração com dados já carregados dos seus PDFs
+                                Suporte para arquivos PDF e CSV (máximo 50MB por arquivo)
                             </p>
-                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                <p class="text-blue-800 text-sm">
-                                    <i class="fas fa-info-circle mr-2"></i>
-                                    <strong>16 registros</strong> já processados dos arquivos:
-                                    Porto Seguro (7), Tokio Marine (7), Zurich (1), Porto Consórcio (1)
-                                </p>
+                            <input type="file" id="file-input" multiple accept=".pdf,.csv" class="hidden" onchange="handleFileSelect(event)">
+                            <button onclick="document.getElementById('file-input').click()" 
+                                    class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700">
+                                <i class="fas fa-folder-open mr-2"></i>Selecionar Arquivos
+                            </button>
+                        </div>
+
+                        <!-- Upload Results -->
+                        <div id="upload-results" class="mt-6 hidden">
+                            <h3 class="text-lg font-medium mb-4">Resultados do Processamento</h3>
+                            <div id="upload-status" class="space-y-3">
+                                <!-- Status será inserido aqui -->
                             </div>
                         </div>
                     </div>
@@ -100,6 +111,14 @@
                                     <li>• Log completo de importação</li>
                                 </ul>
                             </div>
+
+                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <p class="text-blue-800 text-sm">
+                                    <i class="fas fa-info-circle mr-2"></i>
+                                    <strong>Dados de exemplo</strong> já carregados para demonstração.
+                                    Faça upload de seus próprios arquivos para substituir.
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -121,6 +140,9 @@
                                     <option value="Zurich">Zurich</option>
                                     <option value="Porto Consórcio">Porto Consórcio</option>
                                 </select>
+                                <select id="filter-vendedor" class="px-3 py-2 border border-gray-300 rounded-md text-sm">
+                                    <option value="">Todos os Vendedores</option>
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -131,11 +153,14 @@
                                 <tr>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Seguradora</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cliente</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vendedor</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Apólice</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prêmio</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Comissão</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Líquida</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
                                 </tr>
                             </thead>
                             <tbody id="tabela-body" class="bg-white divide-y divide-gray-200">
@@ -154,6 +179,59 @@
                                     <i class="fas fa-download mr-2"></i>Exportar CSV
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Vendedores Tab -->
+            <div id="content-vendedores" class="tab-content hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-semibold">Cadastro de Vendedores</h2>
+                            <button onclick="showVendedorForm()" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700">
+                                <i class="fas fa-plus mr-2"></i>Novo Vendedor
+                            </button>
+                        </div>
+                        
+                        <!-- Formulário de Vendedor -->
+                        <div id="vendedor-form" class="hidden mb-6 p-4 border rounded-lg bg-gray-50">
+                            <h3 class="font-medium mb-4">Adicionar/Editar Vendedor</h3>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Nome</label>
+                                    <input type="text" id="vendedor-nome" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                                    <input type="email" id="vendedor-email" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
+                                    <input type="tel" id="vendedor-telefone" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                                </div>
+                                <div class="flex space-x-2">
+                                    <button onclick="salvarVendedor()" class="bg-green-600 text-white px-4 py-2 rounded-md text-sm hover:bg-green-700">
+                                        <i class="fas fa-save mr-2"></i>Salvar
+                                    </button>
+                                    <button onclick="cancelarVendedor()" class="bg-gray-600 text-white px-4 py-2 rounded-md text-sm hover:bg-gray-700">
+                                        <i class="fas fa-times mr-2"></i>Cancelar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Lista de Vendedores -->
+                        <div id="vendedores-list" class="space-y-3">
+                            <!-- Lista será inserida via JavaScript -->
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h2 class="text-xl font-semibold mb-4">Estatísticas de Vendedores</h2>
+                        <div id="vendedores-stats" class="space-y-4">
+                            <!-- Estatísticas serão inseridas via JavaScript -->
                         </div>
                     </div>
                 </div>
@@ -243,6 +321,31 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Modal para Associar Vendedor -->
+    <div id="vendedor-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-96">
+            <h3 class="text-lg font-medium mb-4">Associar Vendedor</h3>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Cliente:</label>
+                <p id="modal-cliente" class="text-sm text-gray-900 font-medium"></p>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Vendedor:</label>
+                <select id="modal-vendedor-select" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                    <option value="">Selecione um vendedor</option>
+                </select>
+            </div>
+            <div class="flex space-x-2">
+                <button onclick="confirmarAssociacao()" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700">
+                    Confirmar
+                </button>
+                <button onclick="fecharModal()" class="bg-gray-600 text-white px-4 py-2 rounded-md text-sm hover:bg-gray-700">
+                    Cancelar
+                </button>
+            </div>
+        </div>
     </div>
 
     <script src="app.js"></script>
